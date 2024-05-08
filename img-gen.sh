@@ -71,6 +71,7 @@ fi
 echo "Copying files"
 VERSION=`cat VERSION`
 sed 's/^ARPL_VERSION=.*/ARPL_VERSION="'${VERSION}'"/' -i files/board/arpl/overlayfs/opt/arpl/include/consts.sh
+echo "${VERSION}" > files/board/arpl/p1/ARPL-VERSION
 cp -Ru files/* .buildroot/
 
 cd .buildroot
@@ -80,9 +81,26 @@ echo "Version: ${VERSION}"
 echo "Building... Drink a coffee and wait!"
 make BR2_EXTERNAL=../external -j`nproc`
 cd -
-#qemu-img convert -O vmdk -o adapter_type=lsilogic -o compat6 arpl.img arpl.vmdk
+qemu-img convert -O vmdk arpl.img arpl-dyn.vmdk
 qemu-img convert -O vmdk -o adapter_type=lsilogic arpl.img -o subformat=monolithicFlat arpl.vmdk
 [ -x test.sh ] && ./test.sh
 rm -f *.zip
 zip -9 "arpl-${VERSION}.img.zip" arpl.img
-zip -9 "arpl-${VERSION}.vmdk.zip" arpl*.vmdk
+zip -9 "arpl-${VERSION}.vmdk-dyn.zip" arpl-dyn.vmdk
+zip -9 "arpl-${VERSION}.vmdk-flat.zip" arpl.vmdk arpl-flat.vmdk
+sha256sum update-list.yml > sha256sum
+zip -9j update.zip update-list.yml
+while read F; do
+  if [ -d "${F}" ]; then
+    FTGZ="`basename "${F}"`.tgz"
+    tar czf "${FTGZ}" -C "${F}" .
+    sha256sum "${FTGZ}" >> sha256sum
+    zip -9j update.zip "${FTGZ}"
+    rm "${FTGZ}"
+  else
+    (cd `dirname ${F}` && sha256sum `basename ${F}`) >> sha256sum
+    zip -9j update.zip "${F}"
+  fi
+done < <(yq '.replace | explode(.) | to_entries | map([.key])[] | .[]' update-list.yml)
+zip -9j update.zip sha256sum 
+rm -f sha256sum
